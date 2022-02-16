@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, RngCore};
 
 
 // #[cfg(test)]
@@ -8,18 +8,19 @@ use rand::Rng;
 //         assert_eq!(2 + 2, 4);
 //     }
 // }
+#[derive(Clone, Debug)]
 pub struct Network {
     layers: Vec<Layer>,
 }
-
+#[derive(Clone, Copy, Debug)]
 pub struct LayerTopology {
     pub neurons: usize,
 }
-
+#[derive(Clone, Debug)]
 struct Layer {
     neurons: Vec<Neuron>,
 }
-
+#[derive(Clone, Debug)]
 struct Neuron {
     bias: f32, 
     weights: Vec<f32>,
@@ -31,7 +32,7 @@ impl Network {
             .fold(inputs, |inputs, layer| layer.propogate(inputs))
     }
 
-    pub fn random(layers: &[LayerTopology]) -> Self {
+    pub fn random(rng: &mut dyn RngCore, layers: &[LayerTopology]) -> Self {
         assert!(layers.len() > 1);
 
         let layers = layers.windows(2)
@@ -41,6 +42,46 @@ impl Network {
 
         Self {layers}
         
+    }
+    pub fn weights(&self) -> Vec<f32> {
+        let mut weights = Vec::new();
+
+        for layer in &self.layers {
+            for neuron in &layer.neurons {
+                weights.push(neuron.bias);
+    
+                for weight in &neuron.weights {
+                    weights.push(*weight);
+                }
+            }
+        }
+    
+        weights
+    }
+    pub fn from_weights(
+        layers: &[LayerTopology],
+        weights: impl IntoIterator<Item = f32>,
+    ) -> Self {
+        assert!(layers.len() > 1);
+
+        let mut weights = weights.into_iter();
+
+        let layers = layers
+            .windows(2)
+            .map(|layers| {
+                Layer::from_weights(
+                    layers[0].neurons,
+                    layers[1].neurons,
+                    &mut weights,
+                )
+            })
+            .collect();
+
+        if weights.next().is_some() {
+            panic!("got too many weights");
+        }
+
+        Self { layers }
     }
     
 }
@@ -57,7 +98,17 @@ impl Layer {
             .map(|_| Neuron::random(input_neurons)).collect();
         Self {neurons}
     }
-    
+    pub fn from_weights(
+        input_size: usize,
+        output_size: usize,
+        weights: &mut dyn Iterator<Item = f32>,
+    ) -> Self {
+        let neurons = (0..output_size)
+            .map(|_| Neuron::from_weights(input_size, weights))
+            .collect();
+
+        Self { neurons }
+    }
 }
 
 impl Neuron {
@@ -81,5 +132,17 @@ impl Neuron {
             .collect();
         
         Self {bias, weights}
+    }
+    pub fn from_weights(
+        output_neurons: usize,
+        weights: &mut dyn Iterator<Item = f32>,
+    ) -> Self {
+        let bias = weights.next().expect("got not enough weights");
+
+        let weights = (0..output_neurons)
+            .map(|_| weights.next().expect("got not enough weights"))
+            .collect();
+
+        Self { bias, weights }
     }
 }
