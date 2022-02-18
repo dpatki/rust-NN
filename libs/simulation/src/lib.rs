@@ -1,11 +1,12 @@
 #![feature(crate_visibility_modifier)]
-pub use self::{animal::*, food::*, world::*, eye::*};
+pub use self::{animal::*, brain::*, food::*, world::*, eye::*};
 use std::f32::consts::FRAC_PI_2;
 
 mod animal;
 mod food;
 mod eye;
 mod world;
+mod brain;
 mod animal_individual;
 
 use nalgebra as na;
@@ -44,7 +45,10 @@ impl Simulation {
     pub fn world(&self) -> & World {
         &self.world
     }
-    pub fn step(&mut self, rng: &mut dyn RngCore) {
+    pub fn step(
+        &mut self,
+        rng: &mut dyn RngCore,
+    ) -> Option<ga::Statistics> {
         self.process_collisions(rng);
         self.process_brains();
         self.process_movements();
@@ -52,9 +56,20 @@ impl Simulation {
         self.age += 1;
 
         if self.age > GENERATION_LENGTH {
-            self.evolve(rng);
+            Some(self.evolve(rng))
+        } else {
+            None
         }
     }
+
+    pub fn train(&mut self, rng: &mut dyn RngCore) -> ga::Statistics {
+        loop {
+            if let Some(summary) = self.step(rng) {
+                return summary;
+            }
+        }
+    }
+
     fn process_movements(&mut self) {
         for animal in &mut self.world.animals {
             animal.position +=
@@ -83,7 +98,7 @@ impl Simulation {
                 &self.world.foodstuffs,
             );
 
-            let response = animal.brain.propogate(vision);
+            let response = animal.brain.nn.propogate(vision);
 
         
             let speed = response[0].clamp(
@@ -95,9 +110,6 @@ impl Simulation {
                 -ROTATION_ACCEL,
                 ROTATION_ACCEL,
             );
-
-          
-
             animal.speed =
                 (animal.speed + speed).clamp(SPEED_MIN, SPEED_MAX);
 
@@ -107,32 +119,35 @@ impl Simulation {
 
         }
     }
-    fn evolve(&mut self, rng: &mut dyn RngCore) {
+
+    fn evolve(&mut self, rng: &mut dyn RngCore) -> ga::Statistics {
         self.age = 0;
 
-    // Transforms `Vec<Animal>` to `Vec<AnimalIndividual>`
-    let current_population: Vec<_> = self
-        .world
-        .animals
-        .iter()
-        .map(AnimalIndividual::from_animal)
-        .collect();
+        // Transforms `Vec<Animal>` to `Vec<AnimalIndividual>`
+        let current_population: Vec<_> = self
+            .world
+            .animals
+            .iter()
+            .map(AnimalIndividual::from_animal)
+            .collect();
 
-    // Evolves this `Vec<AnimalIndividual>`
-    let evolved_population = self.ga.evolve(
-        rng,
-        &current_population,
-    );
+        // Evolves this `Vec<AnimalIndividual>`
+        let (evolved_population, stats) = self.ga.evolve(
+            rng,
+            &current_population,
+        );
 
-    // Transforms `Vec<AnimalIndividual>` back into `Vec<Animal>`
-    self.world.animals = evolved_population
-        .into_iter()
-        .map(|individual| individual.into_animal(rng))
-        .collect();
+        // Transforms `Vec<AnimalIndividual>` back into `Vec<Animal>`
+        self.world.animals = evolved_population
+            .into_iter()
+            .map(|individual| individual.into_animal(rng))
+            .collect();
 
-    for food in &mut self.world.foodstuffs {
-        food.position = rng.gen();
-    }
+        for food in &mut self.world.foodstuffs {
+            food.position = rng.gen();
+        }
+
+        stats
     }
 }
 

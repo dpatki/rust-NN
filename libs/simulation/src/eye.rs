@@ -56,7 +56,7 @@ impl Eye {
 
             cells[cell] += energy;
         }
-        todo!();
+       cells
     }
 }
 

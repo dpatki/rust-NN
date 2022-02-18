@@ -1,3 +1,4 @@
+use std::iter::once;
 use rand::{Rng, RngCore};
 
 
@@ -43,20 +44,12 @@ impl Network {
         Self {layers}
         
     }
-    pub fn weights(&self) -> Vec<f32> {
-        let mut weights = Vec::new();
-
-        for layer in &self.layers {
-            for neuron in &layer.neurons {
-                weights.push(neuron.bias);
-    
-                for weight in &neuron.weights {
-                    weights.push(*weight);
-                }
-            }
-        }
-    
-        weights
+    pub fn weights(&self) -> impl Iterator<Item = f32> + '_  {
+        self.layers
+        .iter()
+        .flat_map(|layer| layer.neurons.iter())
+        .flat_map(|neuron| once(&neuron.bias).chain(&neuron.weights))
+        .cloned()
     }
     pub fn from_weights(
         layers: &[LayerTopology],
